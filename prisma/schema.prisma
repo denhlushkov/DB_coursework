@@ -59,7 +59,9 @@ model Therapist {
   schedule_id    Int?
   schedule       Schedule? @relation(fields: [schedule_id], references: [schedule_id], onDelete: SetNull)
   name           String    @db.VarChar(100)
+  phone          String?   @unique @db.VarChar(20)
   specialization String?   @db.VarChar(100)
+  photo          String?   @db.Text
   sessions       Session[]
 
   @@index([name])
@@ -69,6 +71,7 @@ model MedicalRecord {
   medical_rec_id Int      @id @default(autoincrement())
   date           DateTime @default(now()) @db.Date
   notes          String?  @db.Text
+  photo          String?  @db.Text
   patient        Patient?
 }
 
@@ -80,8 +83,10 @@ model Patient {
   medical_record MedicalRecord? @relation(fields: [medical_rec_id], references: [medical_rec_id], onDelete: Cascade)
   name           String         @db.VarChar(100)
   birth_date     DateTime       @db.Date
+  phone          String         @unique @db.VarChar(20)
   sessions       Session[]
 
+  @@index([phone])
   @@index([name])
 }
 
@@ -97,6 +102,7 @@ model Session {
   start_time       DateTime      @db.Time
   duration_minutes Int
   status           SessionStatus @default(Scheduled)
+  room_number      String?       @db.VarChar(10)
   invoice          Invoice?
 
   @@index([patient_id])
@@ -119,6 +125,7 @@ model Payment {
   invoice      Invoice       @relation(fields: [invoice_id], references: [invoice_id], onDelete: Restrict)
   amount       Decimal       @db.Decimal(10, 2)
   payment_date DateTime      @default(now()) @db.Date
+  method       PaymentMethod
 
   @@index([invoice_id])
 }
