@@ -1,4 +1,4 @@
-
+version: '3.8'
 
 services:
   db:
@@ -13,6 +13,28 @@ services:
       POSTGRES_DB: reability
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rehab_app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:1488@db:5432/reability
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && node src/server.js"
 
 volumes:
   postgres_data:
