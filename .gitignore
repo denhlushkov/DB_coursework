@@ -4,3 +4,4 @@ node_modules
 dist
 postgres_data
 docker-compose.override.yml
+package-lock.json
