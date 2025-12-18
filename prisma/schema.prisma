@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SessionStatus {
+  Scheduled
+  Completed
+  Cancelled
+}
+
+enum PaymentMethod {
+  Cash
+  Card
+  BankTransfer
+}
+
+enum Severity {
+  Low
+  Medium
+  High
+  Critical
+}
+
+model Schedule {
+  schedule_id  Int         @id @default(autoincrement())
+  date         DateTime    @db.Date
+  start_time   DateTime    @db.Time
+  end_time     DateTime    @db.Time
+  is_available Boolean     @default(true)
+  therapists   Therapist[]
+
+  @@index([date, is_available])
+}
+
+model Diagnosis {
+  diagnosis_id   Int       @id @default(autoincrement())
+  title          String    @unique @db.VarChar(150)
+  description    String?   @db.Text
+  severity_level Severity  @default(Low)
+  patients       Patient[]
+}
+
+model Procedure {
+  procedure_id     Int       @id @default(autoincrement())
+  title            String    @unique @db.VarChar(150)
+  cost             Decimal   @db.Decimal(10, 2)
+  duration_minutes Int
+  sessions         Session[]
+}
+
+model Therapist {
+  therapist_id   Int       @id @default(autoincrement())
+  schedule_id    Int?
+  schedule       Schedule? @relation(fields: [schedule_id], references: [schedule_id], onDelete: SetNull)
+  name           String    @db.VarChar(100)
+  phone          String?   @unique @db.VarChar(20)
+  specialization String?   @db.VarChar(100)
+  photo          String?   @db.Text
+  sessions       Session[]
+
+  @@index([name])
+}
+
+model MedicalRecord {
+  medical_rec_id Int      @id @default(autoincrement())
+  date           DateTime @default(now()) @db.Date
+  notes          String?  @db.Text
+  photo          String?  @db.Text
+  patient        Patient?
+}
+
+model Patient {
+  patient_id     Int            @id @default(autoincrement())
+  diagnosis_id   Int?
+  diagnosis      Diagnosis?     @relation(fields: [diagnosis_id], references: [diagnosis_id], onDelete: SetNull)
+  medical_rec_id Int?           @unique
+  medical_record MedicalRecord? @relation(fields: [medical_rec_id], references: [medical_rec_id], onDelete: Cascade)
+  name           String         @db.VarChar(100)
+  birth_date     DateTime       @db.Date
+  phone          String         @unique @db.VarChar(20)
+  sessions       Session[]
+
+  @@index([phone])
+  @@index([name])
+}
+
+model Session {
+  session_id       Int           @id @default(autoincrement())
+  procedure_id     Int
+  procedure        Procedure     @relation(fields: [procedure_id], references: [procedure_id], onDelete: Restrict)
+  patient_id       Int
+  patient          Patient       @relation(fields: [patient_id], references: [patient_id], onDelete: Restrict)
+  therapist_id     Int
+  therapist        Therapist     @relation(fields: [therapist_id], references: [therapist_id], onDelete: Restrict)
+  date             DateTime      @db.Date
+  start_time       DateTime      @db.Time
+  duration_minutes Int
+  status           SessionStatus @default(Scheduled)
+  room_number      String?       @db.VarChar(10)
+  invoice          Invoice?
+
+  @@index([patient_id])
+  @@index([therapist_id, date])
+  @@index([status])
+}
+
+model Invoice {
+  invoice_id Int       @id @default(autoincrement())
+  session_id Int       @unique
+  session    Session   @relation(fields: [session_id], references: [session_id], onDelete: Cascade)
+  amount     Decimal   @db.Decimal(10, 2)
+  issue_date DateTime  @default(now()) @db.Date
+  payments   Payment[]
+}
+
+model Payment {
+  payment_id   Int           @id @default(autoincrement())
+  invoice_id   Int
+  invoice      Invoice       @relation(fields: [invoice_id], references: [invoice_id], onDelete: Restrict)
+  amount       Decimal       @db.Decimal(10, 2)
+  payment_date DateTime      @default(now()) @db.Date
+  method       PaymentMethod
+
+  @@index([invoice_id])
+}
