@@ -34,6 +34,27 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Реабілітаційний центр API',
+    version: '1.0.0',
+    endpoints: {
+      patients: '/api/patients',
+      therapists: '/api/therapists',
+      sessions: '/api/sessions',
+      diagnoses: '/api/diagnoses',
+      procedures: '/api/procedures',
+      invoices: '/api/invoices',
+      payments: '/api/payments',
+      schedules: '/api/schedules',
+      medicalRecords: '/api/medical-records'
+    },
+    health: '/health',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.use('/api/patients', patientRoutes);
 app.use('/api/therapists', therapistRoutes);
 app.use('/api/sessions', sessionRoutes);
