@@ -4,7 +4,7 @@
 
 ### Діаграма ER:
 
-<img width="1875" height="2194" alt="diagram" src="https://github.com/user-attachments/assets/a74d520a-8abd-443f-a94f-3ae33b1bd59f" />
+![ER](https://github.com/user-attachments/assets/9549d2d9-6f37-4b18-b98e-fc3793b17234)
 
 ## Детальний опис кожної таблиці, її стовпців, ключів та ключових обмежень:
 
