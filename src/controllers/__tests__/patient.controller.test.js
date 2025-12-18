@@ -229,7 +229,7 @@ test('createPatient: parses birth_date/diagnosis_id and creates nested medical_r
   assert.ok(createArgs.data.birth_date instanceof Date);
   assert.equal(createArgs.data.birth_date.toISOString().slice(0, 10), '2000-01-02');
   assert.equal(createArgs.data.phone, '123');
-  assert.equal(createArgs.data.diagnosis_id, 5);
+  assert.deepEqual(createArgs.data.diagnosis, { connect: { diagnosis_id: 5 } });
   assert.deepEqual(createArgs.data.medical_record, {
     create: { notes: null, photo: null }
   });
@@ -265,7 +265,7 @@ test('createPatient: sets diagnosis_id to null when missing/empty', async () => 
   const next = () => {};
 
   await createPatient(req, res, next);
-  assert.equal(createArgs.data.diagnosis_id, null);
+  assert.equal('diagnosis' in createArgs.data, false);
 });
 
 test('updatePatient: builds updateData only from provided fields', async () => {
@@ -297,7 +297,7 @@ test('updatePatient: builds updateData only from provided fields', async () => {
   assert.deepEqual(res.body.data, updated);
 
   assert.deepEqual(updateArgs.where, { patient_id: 2 });
-  assert.deepEqual(updateArgs.data, { name: 'New', diagnosis_id: null });
+  assert.deepEqual(updateArgs.data, { name: 'New', diagnosis: { disconnect: true } });
   assert.deepEqual(updateArgs.include, { diagnosis: true, medical_record: true });
 });
 

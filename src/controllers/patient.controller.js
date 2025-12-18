@@ -100,7 +100,9 @@ const createPatient = async (req, res, next) => {
         name,
         birth_date: new Date(birth_date),
         phone,
-        diagnosis_id: diagnosis_id ? parseInt(diagnosis_id) : null,
+        ...(diagnosis_id
+          ? { diagnosis: { connect: { diagnosis_id: parseInt(diagnosis_id) } } }
+          : {}),
         medical_record: {
           create: {
             notes: notes || null,
@@ -133,7 +135,11 @@ const updatePatient = async (req, res, next) => {
     if (name) updateData.name = name;
     if (birth_date) updateData.birth_date = new Date(birth_date);
     if (phone) updateData.phone = phone;
-    if (diagnosis_id !== undefined) updateData.diagnosis_id = diagnosis_id ? parseInt(diagnosis_id) : null;
+    if (diagnosis_id !== undefined) {
+      updateData.diagnosis = diagnosis_id
+        ? { connect: { diagnosis_id: parseInt(diagnosis_id) } }
+        : { disconnect: true };
+    }
 
     const patient = await prisma.patient.update({
       where: { patient_id: parseInt(id) },
