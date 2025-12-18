@@ -110,3 +110,68 @@ ORDER BY total_revenue DESC;
 
 ![5337241265176776712](https://github.com/user-attachments/assets/90943dc9-0a66-4e97-91c1-75fe8ae0b87b)
 
+### Складний SELECT-запит №3
+
+Бізнес-питання :
+Цей запит аналізує роботу кожного лікаря. Він рахує кількість проведених сеансів, загальний дохід, який приніс лікар, середній чек, і присвоює йому категорію ("Top Performer", "Average", etc.) на основі зароблених грошей.
+
+SQL-запит :
+
+```sql
+WITH TherapistStats AS (
+    SELECT 
+        t.therapist_id,
+        t.name AS therapist_name,
+        t.specialization,
+        COUNT(s.session_id) AS total_sessions,
+        SUM(i.amount) AS total_revenue,
+        AVG(i.amount) AS avg_check_value,
+        DENSE_RANK() OVER (ORDER BY SUM(i.amount) DESC) as revenue_rank
+    FROM "Therapist" t
+
+    JOIN "Session" s ON t.therapist_id = s.therapist_id
+    JOIN "Invoice" i ON s.session_id = i.session_id 
+    JOIN "Procedure" p ON s.procedure_id = p.procedure_id
+    WHERE s.status = 'Completed'      AND i.issue_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '3 months') 
+    GROUP BY t.therapist_id, t.name, t.specialization
+    HAVING COUNT(s.session_id) >= 1
+)
+
+SELECT 
+    therapist_name,
+    specialization,
+    total_sessions,
+    total_revenue,
+    ROUND(avg_check_value, 2) as avg_check,
+    revenue_rank,
+
+    CASE 
+        WHEN revenue_rank <= 3 THEN 'Top Performer 🏆'
+        WHEN total_sessions > 10 THEN 'Experienced'
+        ELSE 'Regular Staff'
+    END as performance_tier
+
+FROM TherapistStats
+ORDER BY total_revenue DESC;
+```
+
+### Складний SELECT-запит №4
+
+Бізнес-питання : Цей запит розраховує середню фактичну тривалість кожної процедури на основі завершених сеансів.
+
+SQL-запит :
+```sql
+SELECT 
+    p."title" AS procedure_name,
+    ROUND(AVG(s."duration_minutes"), 1) AS average_real_duration,
+    p."duration_minutes" AS standard_duration,
+    ROUND(AVG(s."duration_minutes") - p."duration_minutes", 1) AS time_deviation,
+    COUNT(s."session_id") AS total_sessions
+FROM "Procedure" p
+
+JOIN "Session" s ON p."procedure_id" = s."procedure_id"
+WHERE s."status" = 'Completed'
+
+GROUP BY p."title", p."duration_minutes"
+ORDER BY average_real_duration DESC;
+```
