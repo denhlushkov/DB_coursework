@@ -1,5 +1,8 @@
 const prisma = require('../config/database');
 
+// Додав 3 транзакції: 2 для атомарності(delete, create) та 1 для консистентності(getAll)
+// Транзакції для update та getById непотрібні, бо виконується тільки одна операція
+
 const getAllDiagnoses = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, severity_level, search } = req.query;
@@ -14,20 +17,22 @@ const getAllDiagnoses = async (req, res, next) => {
       ];
     }
 
-    const [diagnoses, total] = await Promise.all([
-      prisma.diagnosis.findMany({
-        where,
-        skip,
-        take: parseInt(limit),
-        include: {
-          _count: {
-            select: { patients: true }
-          }
-        },
-        orderBy: { diagnosis_id: 'desc' }
-      }),
-      prisma.diagnosis.count({ where })
-    ]);
+    const [diagnoses, total] = await prisma.$transaction(async (tx) => {
+      return await Promise.all([
+        tx.diagnosis.findMany({
+          where,
+          skip,
+          take: parseInt(limit),
+          include: {
+            _count: {
+              select: { patients: true }
+            }
+          },
+          orderBy: { diagnosis_id: 'desc' }
+        }),
+        tx.diagnosis.count({ where })
+      ]);
+    });
 
     res.json({
       success: true,
@@ -82,12 +87,27 @@ const createDiagnosis = async (req, res, next) => {
   try {
     const { title, description, severity_level } = req.body;
 
-    const diagnosis = await prisma.diagnosis.create({
-      data: {
-        title,
-        description: description || null,
-        severity_level: severity_level || 'Low'
+    const diagnosis = await prisma.$transaction(async (tx) => {
+      const existingDiagnosis = await tx.diagnosis.findUnique({
+        where: { title }
+      });
+
+      if (existingDiagnosis) {
+        throw {
+          code: 'P2002',
+          meta: { target: ['title'] }
+        };
       }
+
+      const newDiagnosis = await tx.diagnosis.create({
+        data: {
+          title,
+          description: description || null,
+          severity_level: severity_level || 'Low'
+        }
+      });
+
+      return newDiagnosis;
     });
 
     res.status(201).json({
@@ -95,7 +115,14 @@ const createDiagnosis = async (req, res, next) => {
       message: 'Діагноз успішно створено',
       data: diagnosis
     });
+
   } catch (error) {
+    if (error.code === 'P2002' && error.meta?.target?.includes('title')) {
+      return res.status(409).json({
+        success: false,
+        message: 'Діагноз з такою назвою вже існує'
+      });
+    }
     next(error);
   }
 };
@@ -128,16 +155,45 @@ const updateDiagnosis = async (req, res, next) => {
 const deleteDiagnosis = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const diagnosisId = parseInt(id);
 
-    await prisma.diagnosis.delete({
-      where: { diagnosis_id: parseInt(id) }
+    const diagnosis = await prisma.diagnosis.findUnique({
+      where: { diagnosis_id: diagnosisId },
+      include: {
+        _count: {
+          select: { patients: true }
+        }
+      }
+    });
+
+    if (!diagnosis) {
+      return res.status(404).json({
+        success: false,
+        message: 'Діагноз не знайдено'
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.patient.updateMany({
+        where: { diagnosis_id: diagnosisId },
+        data: { diagnosis_id: null }
+      });
+
+      await tx.diagnosis.delete({
+        where: { diagnosis_id: diagnosisId }
+      });
     });
 
     res.json({
       success: true,
-      message: 'Діагноз успішно видалено'
+      message: 'Діагноз успішно видалено',
+      data: {
+        deletedDiagnosisId: diagnosisId,
+        affectedPatients: diagnosis._count.patients
+      }
     });
-  } catch (error) {
+  } 
+    catch (error) {
     next(error);
   }
 };
