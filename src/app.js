@@ -33,6 +33,16 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/api/about', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Інформація про проект',
+    version: '1.0.0',
+    description: 'Бекенд застосунок для схеми реабілітаційного центру',
+    author: ['Глушков Денис ІМ-43', 'Бєлов Владислав ІМ-43', 'Жмуденко Даніїл ІМ-42']
+ })
+})
+
 app.get('/api', (req, res) => {
   res.json({
     success: true,
@@ -47,7 +57,8 @@ app.get('/api', (req, res) => {
       invoices: '/api/invoices',
       payments: '/api/payments',
       schedules: '/api/schedules',
-      medicalRecords: '/api/medical-records'
+      medicalRecords: '/api/medical-records',
+      about: '/api/about'
     },
     health: '/health',
     timestamp: new Date().toISOString()
