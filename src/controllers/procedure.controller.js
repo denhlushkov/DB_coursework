@@ -1,153 +1,179 @@
-const prisma = require('../config/database');
+const { PrismaClient } = require('../generated/prisma');
+const prisma = new PrismaClient();
 
-const getAllProcedures = async (req, res, next) => {
-  try {
-    const { page = 1, limit = 10, search, minCost, maxCost } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const where = {};
-    if (search) {
-      where.title = { contains: search, mode: 'insensitive' };
-    }
-    if (minCost || maxCost) {
-      where.cost = {};
-      if (minCost) where.cost.gte = parseFloat(minCost);
-      if (maxCost) where.cost.lte = parseFloat(maxCost);
-    }
-
-    const [procedures, total] = await Promise.all([
-      prisma.procedure.findMany({
-        where,
-        skip,
-        take: parseInt(limit),
-        include: {
-          _count: {
-            select: { sessions: true }
-          }
-        },
-        orderBy: { procedure_id: 'desc' }
-      }),
-      prisma.procedure.count({ where })
-    ]);
-
-    res.json({
-      success: true,
-      data: procedures,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
+const getAll = async (req, res, next) => {
+    try {
+      let page = req.query.page || 1
+      let limit = req.query.limit || 10
+      let offset = (page - 1) * limit
+      let where = {}
+      
+      if (req.query.min_cost) where.cost = { gte: parseFloat(req.query.min_cost) }
+      if (req.query.max_cost) {
+        if (!where.cost) where.cost = {}
+        where.cost.lte = parseFloat(req.query.max_cost)
       }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+      if (req.query.search) {
+        where.title = { contains: req.query.search, mode: 'insensitive' }
+      }
 
-const getProcedureById = async (req, res, next) => {
+      const [data, total] = await prisma.$transaction([
+          prisma.procedure.findMany({
+              where: where,
+              skip: offset,
+              take: parseInt(limit),
+              orderBy: { cost: 'desc' },
+              include: { _count: { select: { sessions: true } } }
+          }),
+          prisma.procedure.count({ where: where })
+      ])
+
+      res.json({
+          success: true,
+          data: data,
+          pagination: {
+             page: parseInt(page),
+             limit: parseInt(limit),
+             total: total,
+             pages: Math.ceil(total / limit)
+          }
+      })
+    } catch (e) {
+        next(e)
+    }
+}
+
+const getOne = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
-    const procedure = await prisma.procedure.findUnique({
-      where: { procedure_id: parseInt(id) },
+    let id = parseInt(req.params.id)
+    const item = await prisma.procedure.findUnique({
+      where: { procedure_id: id },
       include: {
         sessions: {
-          take: 10,
-          orderBy: { date: 'desc' },
+          take: 5, orderBy: { date: 'desc' },
           include: {
-            patient: true,
-            therapist: true
+            patient: { select: { name: true, phone: true } },
+            therapist: { select: { name: true } }
           }
         }
       }
-    });
+    })
 
-    if (!procedure) {
-      return res.status(404).json({
-        success: false,
-        message: 'Процедуру не знайдено'
-      });
+    if (!item) return res.status(404).json({ success: false, message: 'Not found' })
+    
+    res.json({ success: true, data: item })
+  } catch (e) { next(e) }
+}
+
+const create = async (req, res, next) => {
+  try {
+    let body = req.body
+    
+    const newProc = await prisma.$transaction(async (tx) => {
+        let check = await tx.procedure.findFirst({
+            where: { title: body.title }
+        })
+
+        if (check) {
+            throw new Error('Procedure already exists')
+        }
+
+        return await tx.procedure.create({
+            data: {
+              title: body.title,
+              cost: parseFloat(body.cost),
+              duration_minutes: parseInt(body.duration_minutes),
+              description: body.description
+            }
+        })
+    })
+
+    res.status(201).json({ success: true, message: 'Created', data: newProc })
+  } catch (error) {
+    if (error.message === 'Procedure already exists') {
+        return res.status(409).json({ success: false, message: error.message })
     }
-
-    res.json({
-      success: true,
-      data: procedure
-    });
-  } catch (error) {
-    next(error);
+    next(error)
   }
-};
+}
 
-const createProcedure = async (req, res, next) => {
+const update = async (req, res, next) => {
+    try {
+        let id = parseInt(req.params.id)
+        let data = req.body
+        if (data.cost) data.cost = parseFloat(data.cost)
+        if (data.duration_minutes) data.duration_minutes = parseInt(data.duration_minutes)
+
+        const updated = await prisma.procedure.update({
+            where: { procedure_id: id },
+            data: data
+        })
+
+        res.json({ success: true, message: 'Updated', data: updated })
+    } catch (e) {
+        next(e)
+    }
+}
+
+const remove = async (req, res, next) => {
   try {
-    const { title, cost, duration_minutes } = req.body;
+    let id = parseInt(req.params.id)
+    
+    await prisma.$transaction(async (tx) => {
+        let checkSessions = await tx.session.count({
+            where: { procedure_id: id, status: 'Scheduled' }
+        })
 
-    const procedure = await prisma.procedure.create({
-      data: {
-        title,
-        cost: parseFloat(cost),
-        duration_minutes: parseInt(duration_minutes)
-      }
-    });
+        if (checkSessions > 0) {
+            throw new Error('Cannot delete, sessions scheduled')
+        }
 
-    res.status(201).json({
-      success: true,
-      message: 'Процедуру успішно створено',
-      data: procedure
-    });
-  } catch (error) {
-    next(error);
+        let history = await tx.session.count({ where: { procedure_id: id } })
+        if (history > 0) {
+            throw new Error('Cannot delete procedure with history')
+        }
+
+        await tx.procedure.delete({ where: { procedure_id: id } })
+    })
+
+    res.json({ success: true, message: 'Deleted' })
+  } catch (e) {
+    if (e.message === 'Cannot delete, sessions scheduled' || e.message === 'Cannot delete procedure with history') {
+        return res.status(400).json({ message: e.message })
+    }
+    next(e)
   }
-};
+}
 
-const updateProcedure = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { title, cost, duration_minutes } = req.body;
-
-    const updateData = {};
-    if (title) updateData.title = title;
-    if (cost) updateData.cost = parseFloat(cost);
-    if (duration_minutes) updateData.duration_minutes = parseInt(duration_minutes);
-
-    const procedure = await prisma.procedure.update({
-      where: { procedure_id: parseInt(id) },
-      data: updateData
-    });
-
-    res.json({
-      success: true,
-      message: 'Процедуру успішно оновлено',
-      data: procedure
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-const deleteProcedure = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    await prisma.procedure.delete({
-      where: { procedure_id: parseInt(id) }
-    });
-
-    res.json({
-      success: true,
-      message: 'Процедуру успішно видалено'
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+const getAnalytics = async (req, res, next) => {
+    try {
+        const sql = `SELECT    
+                        p.title, 
+                        COUNT(s.session_id)::int as usage_count, 
+                        SUM(i.amount)::float as total_revenue 
+                    FROM "Procedure" p 
+                    JOIN "Session" s ON p.procedure_id = s.procedure_id 
+                    JOIN "Invoice" i ON s.session_id = i.session_id 
+                    GROUP BY p.title 
+                    ORDER BY total_revenue DESC 
+                    LIMIT 5`
+        
+        const result = await prisma.$queryRawUnsafe(sql)
+        
+        res.json({
+            success: true,
+            data: result
+        })
+    } catch (e) {
+        next(e)
+    }
+}
 
 module.exports = {
-  getAllProcedures,
-  getProcedureById,
-  createProcedure,
-  updateProcedure,
-  deleteProcedure
-};
-
+    getAll,
+    getOne,
+    create,
+    update,
+    remove,
+    getAnalytics
+}
